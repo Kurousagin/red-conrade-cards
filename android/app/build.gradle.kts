@@ -1,18 +1,17 @@
-// ✅ CRITICAL: Required imports for signing configuration
 import java.util.Properties
 import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// ── Load signing config from key.properties ─────────────────
+// ── Signing: usa key.properties se existir, senão usa debug ──
 val keyPropertiesFile = rootProject.file("key.properties")
+val hasKeyProperties = keyPropertiesFile.exists()
 val keyProperties = Properties()
-if (keyPropertiesFile.exists()) {
+if (hasKeyProperties) {
     keyProperties.load(FileInputStream(keyPropertiesFile))
 }
 
@@ -38,19 +37,25 @@ android {
         versionName = flutter.versionName
     }
 
-    // ── Signing configs ──────────────────────────────────────
     signingConfigs {
-        create("release") {
-            keyAlias = keyProperties["keyAlias"] as String
-            keyPassword = keyProperties["keyPassword"] as String
-            storeFile = file(keyProperties["storeFile"] as String)
-            storePassword = keyProperties["storePassword"] as String
+        if (hasKeyProperties) {
+            create("release") {
+                keyAlias = keyProperties["keyAlias"] as String
+                keyPassword = keyProperties["keyPassword"] as String
+                storeFile = file(keyProperties["storeFile"] as String)
+                storePassword = keyProperties["storePassword"] as String
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Se key.properties existe usa release signing, senão usa debug
+            signingConfig = if (hasKeyProperties) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }
