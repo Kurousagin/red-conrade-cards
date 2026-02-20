@@ -1,0 +1,36 @@
+import '../models/card_model.dart';
+
+final List<ComradeCard> kAllCards = [
+  // Commons
+  const ComradeCard(id:'c1', name:'Camarada Trabalhador', desc:'O herói do proletariado', rare:false, emoji:'☭', colorSeed:0),
+  const ComradeCard(id:'c2', name:'Kolkhoznik Furioso', desc:'Da fazenda coletiva com raiva', rare:false, emoji:'✊', colorSeed:1),
+  const ComradeCard(id:'c3', name:'Politruk Irritado', desc:'Comissário político de plantão', rare:false, emoji:'📢', colorSeed:2),
+  const ComradeCard(id:'c4', name:'Babushka Revolucionária', desc:'Avó do comunismo científico', rare:false, emoji:'🌟', colorSeed:3),
+  const ComradeCard(id:'c5', name:'Ivan do Gulag', desc:'Sobrevivente nato, inquebrável', rare:false, emoji:'💪', colorSeed:4),
+  const ComradeCard(id:'c6', name:'Soldado da Vodka', desc:'Nunca de braços vazios', rare:false, emoji:'🚂', colorSeed:5),
+  const ComradeCard(id:'c7', name:'Engenheiro da URSS', desc:'Inventa solução com nada', rare:false, emoji:'⚒️', colorSeed:6),
+  const ComradeCard(id:'c8', name:'Dançarina do Bolshoi', desc:'Arte pura do povo soviético', rare:false, emoji:'🌍', colorSeed:7),
+  const ComradeCard(id:'c9', name:'Burocrata Soviético', desc:'Carimba tudo em triplicata', rare:false, emoji:'📜', colorSeed:8),
+  const ComradeCard(id:'c10', name:'Mineiro do Donbass', desc:'Extrai felicidade do subsolo', rare:false, emoji:'⚡', colorSeed:9),
+  const ComradeCard(id:'c11', name:'Cosmonaut Camarada', desc:'Socialismo chegou ao espaço', rare:false, emoji:'🏅', colorSeed:10),
+  const ComradeCard(id:'c12', name:'Propagandista Local', desc:'Distribui panfletos infinitos', rare:false, emoji:'🏭', colorSeed:11),
+  const ComradeCard(id:'c13', name:'Pioneiro Soviético', desc:'O futuro brilhante do partido', rare:false, emoji:'🛡️', colorSeed:12),
+  const ComradeCard(id:'c14', name:'Coletivizador Maluco', desc:'Tudo é de todos, camarada', rare:false, emoji:'👊', colorSeed:13),
+  const ComradeCard(id:'c15', name:'DJ Marxista', desc:'Toca a Internacional no beat', rare:false, emoji:'🎖️', colorSeed:14),
+  const ComradeCard(id:'c16', name:'Pescador do Báltico', desc:'Quota cumprida! Vodka merecida', rare:false, emoji:'☭', colorSeed:15),
+  const ComradeCard(id:'c17', name:'Tractorista Heroico', desc:'Stakhanov do campo coletivo', rare:false, emoji:'✊', colorSeed:16),
+  const ComradeCard(id:'c18', name:'Catadora de Sucata', desc:'Recicla pela pátria amada', rare:false, emoji:'⚒️', colorSeed:17),
+  const ComradeCard(id:'c19', name:'Komissário da Fila', desc:'Especialista em esperar horas', rare:false, emoji:'📢', colorSeed:18),
+  const ComradeCard(id:'c20', name:'Professor de Dialética', desc:'Tese + Antítese = Caos total', rare:false, emoji:'📜', colorSeed:19),
+  // Rares
+  const ComradeCard(id:'r1', name:'Karl Trollx', desc:'O meme original do proletariado', rare:true, emoji:'⭐', colorSeed:20),
+  const ComradeCard(id:'r2', name:'Lenintroll', desc:'O trollador da Grande Revolução', rare:true, emoji:'⭐', colorSeed:21),
+  const ComradeCard(id:'r3', name:'Stalinface', desc:'Você foi reprovado, camarada', rare:true, emoji:'⭐', colorSeed:22),
+  const ComradeCard(id:'r4', name:'Gorbachev LOL', desc:'Destruiu a URSS sem querer kek', rare:true, emoji:'⭐', colorSeed:23),
+  const ComradeCard(id:'r5', name:'Trotskyface', desc:'Expulso mas eternamente memado', rare:true, emoji:'⭐', colorSeed:24),
+  const ComradeCard(id:'r6', name:'Rasputroll', desc:'Impossível de eliminar no meta', rare:true, emoji:'⭐', colorSeed:25),
+  const ComradeCard(id:'r7', name:'Czar Nicholas Kek', desc:'Dernier czar, premier meme lord', rare:true, emoji:'⭐', colorSeed:26),
+  const ComradeCard(id:'r8', name:'Brejnev Smug', desc:'Estagnação com muito estilo', rare:true, emoji:'⭐', colorSeed:27),
+  const ComradeCard(id:'r9', name:'KGB Troll', desc:'Já está te observando, camarada', rare:true, emoji:'⭐', colorSeed:28),
+  const ComradeCard(id:'r10', name:'Sputnik Meme', desc:'Primeiro satélite da trollagem', rare:true, emoji:'⭐', colorSeed:29),
+];
