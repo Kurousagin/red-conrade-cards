@@ -2,7 +2,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
-import '../data/cards_data.dart';
 import '../models/card_model.dart';
 import '../widgets/soviet_theme.dart';
 import '../widgets/card_widget.dart';
@@ -14,7 +13,8 @@ const _multiCount = 5;
 
 class RouletteScreen extends StatefulWidget {
   const RouletteScreen({super.key});
-  @override State<RouletteScreen> createState() => _RouletteScreenState();
+  @override
+  State<RouletteScreen> createState() => _RouletteScreenState();
 }
 
 class _RouletteScreenState extends State<RouletteScreen>
@@ -27,7 +27,20 @@ class _RouletteScreenState extends State<RouletteScreen>
   bool _showWin = false;
   String? _error;
 
-  static const _symbols = ['☭','⭐','✊','⚒️','🌟','💎','🔴','👑','🌍','⚡','💪','🎖️'];
+  static const _symbols = [
+    '☭',
+    '⭐',
+    '✊',
+    '⚒️',
+    '🌟',
+    '💎',
+    '🔴',
+    '👑',
+    '🌍',
+    '⚡',
+    '💪',
+    '🎖️'
+  ];
 
   @override
   void initState() {
@@ -36,10 +49,10 @@ class _RouletteScreenState extends State<RouletteScreen>
     _spinAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic),
     )..addListener(() {
-      setState(() {
-        _currentAngle = _spinAnim.value;
+        setState(() {
+          _currentAngle = _spinAnim.value;
+        });
       });
-    });
   }
 
   @override
@@ -49,13 +62,25 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   ComradeCard _pickCard() {
+    final gp = context.read<GameProvider>();
+    final allCards = gp.allCards;
+    if (allCards.isEmpty)
+      return ComradeCard(
+          id: 'empty',
+          name: '?',
+          desc: '?',
+          rare: false,
+          emoji: '?',
+          colorSeed: 0);
     final roll = Random().nextDouble();
-    final rares = kAllCards.where((c) => c.rare).toList();
-    final commons = kAllCards.where((c) => !c.rare).toList();
+    final rares = allCards.where((c) => c.rare).toList();
+    final commons = allCards.where((c) => !c.rare).toList();
     if (roll < _rareChance && rares.isNotEmpty) {
       return rares[Random().nextInt(rares.length)];
     }
-    return commons[Random().nextInt(commons.length)];
+    return commons.isNotEmpty
+        ? commons[Random().nextInt(commons.length)]
+        : allCards[Random().nextInt(allCards.length)];
   }
 
   Future<void> _doSpin(int count) async {
@@ -67,7 +92,10 @@ class _RouletteScreenState extends State<RouletteScreen>
       setState(() => _error = null);
       return;
     }
-    setState(() { _spinning = true; _error = null; });
+    setState(() {
+      _spinning = true;
+      _error = null;
+    });
 
     final rounds = 5 + Random().nextInt(5);
     final extra = Random().nextDouble() * 2 * pi;
@@ -107,15 +135,23 @@ class _RouletteScreenState extends State<RouletteScreen>
               child: Column(
                 children: [
                   // Title
-                  const Text('ROLETA', style: TextStyle(
-                    fontFamily: 'Oswald', fontWeight: FontWeight.w700,
-                    fontSize: 34, color: SC.red, letterSpacing: 6,
-                  )),
-                  const Text('DO CAMARADA', style: TextStyle(
-                    fontSize: 12, color: SC.cream, letterSpacing: 4,
-                  )),
+                  const Text('ROLETA',
+                      style: TextStyle(
+                        fontFamily: 'Oswald',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 34,
+                        color: SC.red,
+                        letterSpacing: 6,
+                      )),
+                  const Text('DO CAMARADA',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: SC.cream,
+                        letterSpacing: 4,
+                      )),
                   const SizedBox(height: 4),
-                  const Text('━━━ ☭ ━━━', style: TextStyle(color: SC.gold, fontSize: 14)),
+                  const Text('━━━ ☭ ━━━',
+                      style: TextStyle(color: SC.gold, fontSize: 14)),
                   const SizedBox(height: 16),
 
                   // Wheel
@@ -133,8 +169,12 @@ class _RouletteScreenState extends State<RouletteScreen>
                         border: Border.all(color: SC.red),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text('⚠️ $_error', textAlign: TextAlign.center,
-                        style: const TextStyle(fontFamily: 'Oswald', color: Color(0xFFFF6666), fontSize: 13)),
+                      child: Text('⚠️ $_error',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontFamily: 'Oswald',
+                              color: Color(0xFFFF6666),
+                              fontSize: 13)),
                     ),
 
                   // Info row
@@ -179,9 +219,13 @@ class _RouletteScreenState extends State<RouletteScreen>
                     ),
                     child: Column(
                       children: [
-                        const Text('☭ CHANCES DO POVO ☭', style: TextStyle(
-                          fontFamily: 'Oswald', fontSize: 11, color: SC.gold, letterSpacing: 2,
-                        )),
+                        const Text('☭ CHANCES DO POVO ☭',
+                            style: TextStyle(
+                              fontFamily: 'Oswald',
+                              fontSize: 11,
+                              color: SC.gold,
+                              letterSpacing: 2,
+                            )),
                         const SizedBox(height: 8),
                         _oddsRow('● Carta Comum', '~85%', SC.cream),
                         _oddsRow('⭐ Carta Rara', '~15%', SC.gold),
@@ -205,15 +249,23 @@ class _RouletteScreenState extends State<RouletteScreen>
     const int segments = 12;
     return Column(
       children: [
-        const Text('▼', style: TextStyle(fontSize: 20, color: SC.gold, shadows: [Shadow(color: SC.gold, blurRadius: 8)])),
-        const SizedBox(height: -4),
+        Transform.translate(
+          offset: const Offset(0, 4),
+          child: const Text('▼',
+              style: TextStyle(
+                  fontSize: 20,
+                  color: SC.gold,
+                  shadows: [Shadow(color: SC.gold, blurRadius: 8)])),
+        ),
         Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: SC.gold, width: 4),
-            boxShadow: [BoxShadow(color: SC.gold.withValues(alpha: 0.3), blurRadius: 16)],
+            boxShadow: [
+              BoxShadow(color: SC.gold.withValues(alpha: 0.3), blurRadius: 16)
+            ],
           ),
           child: ClipOval(
             child: Transform.rotate(
@@ -230,22 +282,32 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   Widget _infoCard(String label, String value) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: SC.card,
-        border: Border.all(color: SC.redDark),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Text(label, style: const TextStyle(fontFamily: 'Oswald', fontSize: 9, color: SC.grey, letterSpacing: 1)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontFamily: 'Oswald', fontWeight: FontWeight.w700, fontSize: 16, color: SC.gold)),
-        ],
-      ),
-    ),
-  );
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: SC.card,
+            border: Border.all(color: SC.redDark),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontFamily: 'Oswald',
+                      fontSize: 9,
+                      color: SC.grey,
+                      letterSpacing: 1)),
+              const SizedBox(height: 4),
+              Text(value,
+                  style: const TextStyle(
+                      fontFamily: 'Oswald',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: SC.gold)),
+            ],
+          ),
+        ),
+      );
 
   Widget _spinButton({
     required String icon,
@@ -266,22 +328,33 @@ class _RouletteScreenState extends State<RouletteScreen>
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: isMulti ? [const Color(0xFF4A0000), SC.redDark] : [SC.redDark, SC.red],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: isMulti
+                  ? [const Color(0xFF4A0000), SC.redDark]
+                  : [SC.redDark, SC.red],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            border: Border.all(color: isMulti ? SC.gold : SC.redLight, width: 2),
+            border:
+                Border.all(color: isMulti ? SC.gold : SC.redLight, width: 2),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             children: [
-              Text('$icon ${_spinning ? "⟳ GIRANDO..." : label}', style: const TextStyle(
-                fontFamily: 'Oswald', fontWeight: FontWeight.w700,
-                fontSize: 20, color: Colors.white, letterSpacing: 2,
-              )),
+              Text('$icon ${_spinning ? "⟳ GIRANDO..." : label}',
+                  style: const TextStyle(
+                    fontFamily: 'Oswald',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    color: Colors.white,
+                    letterSpacing: 2,
+                  )),
               const SizedBox(height: 4),
-              Text('🎟️ $cost tickets $detail', style: const TextStyle(
-                fontFamily: 'Oswald', fontSize: 12, color: SC.cream,
-              )),
+              Text('🎟️ $cost tickets $detail',
+                  style: const TextStyle(
+                    fontFamily: 'Oswald',
+                    fontSize: 12,
+                    color: SC.cream,
+                  )),
             ],
           ),
         ),
@@ -290,15 +363,22 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   Widget _oddsRow(String label, String value, Color valueColor) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontFamily: 'Oswald', fontSize: 12, color: SC.grey)),
-        Text(value, style: TextStyle(fontFamily: 'Oswald', fontSize: 12, color: valueColor, fontWeight: FontWeight.w700)),
-      ],
-    ),
-  );
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontFamily: 'Oswald', fontSize: 12, color: SC.grey)),
+            Text(value,
+                style: TextStyle(
+                    fontFamily: 'Oswald',
+                    fontSize: 12,
+                    color: valueColor,
+                    fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
 
   Widget _buildWinOverlay() {
     final hasRare = _wonCards.any((c) => c.rare);
@@ -319,10 +399,12 @@ class _RouletteScreenState extends State<RouletteScreen>
                   width: 2,
                 ),
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(
-                  color: (hasRare ? SC.gold : SC.red).withValues(alpha: 0.3),
-                  blurRadius: 24,
-                )],
+                boxShadow: [
+                  BoxShadow(
+                    color: (hasRare ? SC.gold : SC.red).withValues(alpha: 0.3),
+                    blurRadius: 24,
+                  )
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -331,8 +413,10 @@ class _RouletteScreenState extends State<RouletteScreen>
                     hasRare ? '⭐ RARO CONQUISTADO! ⭐' : '🎉 CARTAS DO POVO!',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontFamily: 'Oswald', fontWeight: FontWeight.w700,
-                      fontSize: 18, color: hasRare ? SC.gold : SC.cream,
+                      fontFamily: 'Oswald',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: hasRare ? SC.gold : SC.cream,
                       letterSpacing: 2,
                     ),
                   ),
@@ -346,10 +430,13 @@ class _RouletteScreenState extends State<RouletteScreen>
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: _wonCards.map((c) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: CardDisplay(card: c),
-                      )).toList(),
+                      children: _wonCards
+                          .map((c) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: CardDisplay(card: c),
+                              ))
+                          .toList(),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -388,10 +475,15 @@ class _WheelPainter extends CustomPainter {
       final startAngle = i * angle - pi / 2;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
-        startAngle, angle, true, paint,
+        startAngle,
+        angle,
+        true,
+        paint,
       );
       // Divider lines
-      final linePaint = Paint()..color = const Color(0xFFFFD700).withValues(alpha: 0.3)..strokeWidth = 1;
+      final linePaint = Paint()
+        ..color = const Color(0xFFFFD700).withValues(alpha: 0.3)
+        ..strokeWidth = 1;
       final lineEnd = Offset(
         center.dx + radius * cos(startAngle),
         center.dy + radius * sin(startAngle),
@@ -405,7 +497,9 @@ class _WheelPainter extends CustomPainter {
         center.dy + textR * sin(textAngle),
       );
       final tp = TextPainter(
-        text: TextSpan(text: symbols[i % symbols.length], style: const TextStyle(fontSize: 16)),
+        text: TextSpan(
+            text: symbols[i % symbols.length],
+            style: const TextStyle(fontSize: 16)),
         textDirection: TextDirection.ltr,
       )..layout();
       canvas.save();
@@ -415,11 +509,20 @@ class _WheelPainter extends CustomPainter {
       canvas.restore();
     }
     // Center circle
-    canvas.drawCircle(center, 26,
-      Paint()..shader = const RadialGradient(
-        colors: [Color(0xFFCC0000), Color(0xFF8B0000)],
-      ).createShader(Rect.fromCircle(center: center, radius: 26)));
-    canvas.drawCircle(center, 26, Paint()..color = SC.gold..style = PaintingStyle.stroke..strokeWidth = 3);
+    canvas.drawCircle(
+        center,
+        26,
+        Paint()
+          ..shader = const RadialGradient(
+            colors: [Color(0xFFCC0000), Color(0xFF8B0000)],
+          ).createShader(Rect.fromCircle(center: center, radius: 26)));
+    canvas.drawCircle(
+        center,
+        26,
+        Paint()
+          ..color = SC.gold
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3);
     final tp = TextPainter(
       text: const TextSpan(text: '☭', style: TextStyle(fontSize: 20)),
       textDirection: TextDirection.ltr,

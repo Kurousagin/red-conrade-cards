@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'providers/game_provider.dart';
+import 'multiplayer/mp_provider.dart';
 import 'widgets/soviet_theme.dart';
 import 'screens/deck_screen.dart';
 import 'screens/roulette_screen.dart';
@@ -9,6 +10,7 @@ import 'screens/games_screen.dart';
 import 'screens/shop_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/achievements_screen.dart';
+import 'multiplayer/mp_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,8 +27,11 @@ class RedComradeCardsApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => GameProvider()..init(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => GameProvider()..init()),
+        ChangeNotifierProvider(create: (_) => MpProvider()),
+      ],
       child: MaterialApp(
         title: 'Red Comrade Cards ☭',
         debugShowCheckedModeBanner: false,
@@ -39,25 +44,71 @@ class RedComradeCardsApp extends StatelessWidget {
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
-  @override State<HomeShell> createState() => _HomeShellState();
+  @override
+  State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
   int _tab = 1; // Start on Roulette
   bool _bonusShown = false;
 
-  static const _screens = [
+  // Screens agora incluem Multiplayer (índice 6)
+  static const List<Widget> _screens = [
     DeckScreen(),
     RouletteScreen(),
     GamesScreen(),
     ShopScreen(),
     FavoritesScreen(),
     AchievementsScreen(),
+    MpScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     final gp = context.watch<GameProvider>();
+
+    // Loading screen while cards are being fetched
+    if (gp.isLoading) {
+      return const Scaffold(
+        backgroundColor: SC.bg,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('☭',
+                  style: TextStyle(
+                      fontSize: 64,
+                      shadows: [Shadow(color: SC.gold, blurRadius: 16)])),
+              SizedBox(height: 20),
+              Text('RED COMRADE CARDS',
+                  style: TextStyle(
+                    fontFamily: 'Oswald',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 24,
+                    color: SC.gold,
+                    letterSpacing: 4,
+                  )),
+              SizedBox(height: 8),
+              Text('Carregando cartas do povo...',
+                  style: TextStyle(
+                    fontFamily: 'Oswald',
+                    fontSize: 13,
+                    color: SC.cream,
+                  )),
+              SizedBox(height: 24),
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(SC.red),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     // Login bonus toast
     if (!_bonusShown && gp.loginBonusAmount != null) {
@@ -90,26 +141,36 @@ class _HomeShellState extends State<HomeShell> {
               child: Row(
                 children: [
                   // Logo
-                  const Text('☭', style: TextStyle(fontSize: 28,
-                    shadows: [Shadow(color: SC.gold, blurRadius: 8)],
-                  )),
+                  const Text('☭',
+                      style: TextStyle(
+                        fontSize: 28,
+                        shadows: [Shadow(color: SC.gold, blurRadius: 8)],
+                      )),
                   const SizedBox(width: 8),
                   const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('RED COMRADE', style: TextStyle(
-                        fontFamily: 'Oswald', fontWeight: FontWeight.w700,
-                        fontSize: 16, color: SC.gold, letterSpacing: 2,
-                      )),
-                      Text('CARDS', style: TextStyle(
-                        fontSize: 11, color: SC.cream, letterSpacing: 4,
-                      )),
+                      Text('RED COMRADE',
+                          style: TextStyle(
+                            fontFamily: 'Oswald',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: SC.gold,
+                            letterSpacing: 2,
+                          )),
+                      Text('CARDS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: SC.cream,
+                            letterSpacing: 4,
+                          )),
                     ],
                   ),
                   const Spacer(),
                   // Rank badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(8),
@@ -117,12 +178,16 @@ class _HomeShellState extends State<HomeShell> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(rank['icon'] as String, style: const TextStyle(fontSize: 12)),
+                        Text(rank['icon'] as String,
+                            style: const TextStyle(fontSize: 12)),
                         const SizedBox(width: 3),
-                        Text(rank['name'] as String, style: TextStyle(
-                          fontFamily: 'Oswald', fontWeight: FontWeight.w700,
-                          fontSize: 10, color: Color(rank['color'] as int),
-                        )),
+                        Text(rank['name'] as String,
+                            style: TextStyle(
+                              fontFamily: 'Oswald',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 10,
+                              color: Color(rank['color'] as int),
+                            )),
                       ],
                     ),
                   ),
@@ -150,7 +215,8 @@ class _HomeShellState extends State<HomeShell> {
                   _navItem(2, '🎮', 'Jogos'),
                   _navItem(3, '💰', 'Mercado'),
                   _navItem(4, '❤️', 'Favoritos'),
-                  _navItem(5, '🏆', 'Conquistas'),
+                  _navItem(5, '🏆', 'Troféus'),
+                  _navItem(6, '📡', 'Multi'),
                 ],
               ),
             ),
@@ -162,6 +228,7 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _navItem(int index, String icon, String label) {
     final active = _tab == index;
+    final isMp = index == 6;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _tab = index),
@@ -169,9 +236,16 @@ class _HomeShellState extends State<HomeShell> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
-            color: active ? SC.red.withValues(alpha: 0.15) : Colors.transparent,
-            border: Border(top: BorderSide(
-              color: active ? SC.red : Colors.transparent,
+            color: active
+                ? (isMp
+                    ? SC.greenDark.withValues(alpha: 0.2)
+                    : SC.red.withValues(alpha: 0.15))
+                : Colors.transparent,
+            border: Border(
+                top: BorderSide(
+              color: active
+                  ? (isMp ? SC.green : SC.red)
+                  : Colors.transparent,
               width: 2,
             )),
           ),
@@ -180,13 +254,16 @@ class _HomeShellState extends State<HomeShell> {
             children: [
               Text(icon, style: const TextStyle(fontSize: 18)),
               const SizedBox(height: 2),
-              Text(label, style: TextStyle(
-                fontFamily: 'Oswald',
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: active ? SC.gold : const Color(0xFF666666),
-                letterSpacing: 0.3,
-              )),
+              Text(label,
+                  style: TextStyle(
+                    fontFamily: 'Oswald',
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: active
+                        ? (isMp ? SC.green : SC.gold)
+                        : const Color(0xFF666666),
+                    letterSpacing: 0.3,
+                  )),
             ],
           ),
         ),
@@ -208,19 +285,29 @@ class _HomeShellState extends State<HomeShell> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('☭ BOM DIA, CAMARADA! ☭',
+            const Text(
+              '☭ BOM DIA, CAMARADA! ☭',
               textAlign: TextAlign.center,
-              style: TextStyle(fontFamily: 'Oswald', fontWeight: FontWeight.w700, fontSize: 15, color: SC.gold, letterSpacing: 2),
+              style: TextStyle(
+                  fontFamily: 'Oswald',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: SC.gold,
+                  letterSpacing: 2),
             ),
             const SizedBox(height: 4),
-            Text('Bônus diário: +$amount 🎟️ tickets',
+            Text(
+              'Bônus diário: +$amount 🎟️ tickets',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontFamily: 'Oswald', fontSize: 13, color: SC.cream),
+              style: const TextStyle(
+                  fontFamily: 'Oswald', fontSize: 13, color: SC.cream),
             ),
             if (days > 1)
-              Text('🔥 $days dias seguidos!',
+              Text(
+                '🔥 $days dias seguidos!',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontFamily: 'Oswald', fontSize: 11, color: SC.gold),
+                style: const TextStyle(
+                    fontFamily: 'Oswald', fontSize: 11, color: SC.gold),
               ),
           ],
         ),

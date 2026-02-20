@@ -18,21 +18,49 @@ class ComradeCard {
   });
 
   factory ComradeCard.fromJson(Map<String, dynamic> json, int index) {
-    final isRare = json['rare'] == true || index % 5 == 0;
+    final src = json['src'] as String? ?? '';
+    final isRare = json['rare'] == true;
+
+    // Extract name from filename: "carta-1.png" -> "Carta 1", "carta-4-rare.png" -> "Carta 4"
+    var name = 'Carta #$index';
+    final match = RegExp(r'carta-(\d+)').firstMatch(src);
+    if (match != null) {
+      name = 'Carta ${match.group(1)}';
+    }
+
     return ComradeCard(
-      id: 'card_${json['id'] ?? index}',
-      name: json['name'] ?? 'Camarada #${json['id'] ?? index}',
-      desc: json['desc'] ?? json['author'] ?? 'Herói do proletariado',
+      id: 'card_$index',
+      name: name,
+      desc: isRare ? 'Carta rara do proletariado' : 'Carta do povo',
       rare: isRare,
-      imageUrl: json['src'] as String?,
+      imageUrl: src.isNotEmpty ? src : null,
       emoji: isRare ? '⭐' : _emojis[index % _emojis.length],
       colorSeed: index,
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'src': imageUrl ?? '',
+        'rare': rare,
+      };
+
   static const _emojis = [
-    '☭', '✊', '⚒️', '🔴', '🌟', '🚂', '🏭', '📢',
-    '📜', '💪', '🌍', '⚡', '🎖️', '🛡️', '👊', '🏅',
+    '☭',
+    '✊',
+    '⚒️',
+    '🔴',
+    '🌟',
+    '🚂',
+    '🏭',
+    '📢',
+    '📜',
+    '💪',
+    '🌍',
+    '⚡',
+    '🎖️',
+    '🛡️',
+    '👊',
+    '🏅',
   ];
 }
 
@@ -84,18 +112,18 @@ class GameStats {
   }
 
   Map<String, dynamic> toJson() => {
-    'totalSpins': totalSpins,
-    'rareCardsCollected': rareCardsCollected,
-    'albumCompletion': albumCompletion,
-    'gamesWon': gamesWon,
-    'cardsSold': cardsSold,
-  };
+        'totalSpins': totalSpins,
+        'rareCardsCollected': rareCardsCollected,
+        'albumCompletion': albumCompletion,
+        'gamesWon': gamesWon,
+        'cardsSold': cardsSold,
+      };
 
   factory GameStats.fromJson(Map<String, dynamic> j) => GameStats(
-    totalSpins: (j['totalSpins'] as num?)?.toInt() ?? 0,
-    rareCardsCollected: (j['rareCardsCollected'] as num?)?.toInt() ?? 0,
-    albumCompletion: (j['albumCompletion'] as num?)?.toInt() ?? 0,
-    gamesWon: (j['gamesWon'] as num?)?.toInt() ?? 0,
-    cardsSold: (j['cardsSold'] as num?)?.toInt() ?? 0,
-  );
+        totalSpins: (j['totalSpins'] as num?)?.toInt() ?? 0,
+        rareCardsCollected: (j['rareCardsCollected'] as num?)?.toInt() ?? 0,
+        albumCompletion: (j['albumCompletion'] as num?)?.toInt() ?? 0,
+        gamesWon: (j['gamesWon'] as num?)?.toInt() ?? 0,
+        cardsSold: (j['cardsSold'] as num?)?.toInt() ?? 0,
+      );
 }
