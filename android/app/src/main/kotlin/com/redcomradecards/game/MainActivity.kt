@@ -1,5 +1,6 @@
-package com.redcomradecards.red_comrade_cards
+package com.redcomradecards.game
 
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity()
+

@@ -85,7 +85,7 @@ class _MpTradeScreenState extends State<MpTradeScreen> {
 
     // Lista de jogadores para trocar
     final players = mp.players
-        .where((p) => p.id != mp.myId)
+        .where((p) => p.id != mp.myIp)
         .toList();
     if (mp.isHost) {
       // clientes aparecem para o host

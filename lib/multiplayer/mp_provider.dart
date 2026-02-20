@@ -1,43 +1,74 @@
 // ══════════════════════════════════════════════════════════════
-//  MpProvider — Estado global do multiplayer (ChangeNotifier)
+//  MpProvider — Estado global do multiplayer via UDP LAN
+//
+//  FLUXO DE CONEXÃO:
+//  HOST:
+//    1. Abre socket UDP na porta 8765
+//    2. Envia broadcast "room_announce" a cada 2s
+//    3. Recebe "join_request" de clientes
+//    4. Envia "join_ack" com lista de jogadores
+//    5. Gerencia estado do jogo e faz relay de mensagens
+//
+//  CLIENT:
+//    1. Abre socket UDP na porta 8765
+//    2. Escuta broadcasts "room_announce"
+//    3. Envia "join_request" ao IP do host
+//    4. Recebe "join_ack" e entra na sala
+//    5. Envia/recebe mensagens de jogo
 // ══════════════════════════════════════════════════════════════
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:network_info_plus/network_info_plus.dart';
-import 'mp_server.dart';
-import 'mp_client.dart';
+import 'mp_udp_service.dart';
 
 enum MpRole { none, host, client }
+
 enum MpGamePhase { lobby, playing, result }
 
 class PlayerInfo {
-  final String id;
+  final String id; // IP do dispositivo
   final String name;
   int score;
   PlayerInfo({required this.id, required this.name, this.score = 0});
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'score': score};
+  factory PlayerInfo.fromJson(Map<String, dynamic> j) => PlayerInfo(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        score: (j['score'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class MpRoom {
+  final String hostIp;
+  final String hostName;
+  final int playerCount;
+  MpRoom({required this.hostIp, required this.hostName, required this.playerCount});
 }
 
 class MpProvider extends ChangeNotifier {
-  final MpServer _server = MpServer();
-  final MpClientConn _conn = MpClientConn();
+  final MpUdpService _udp = MpUdpService();
 
   MpRole _role = MpRole.none;
   MpGamePhase _phase = MpGamePhase.lobby;
-  String _localIp = '...';
   String _myName = 'Camarada';
   String _currentGame = '';
-  List<PlayerInfo> _players = [];
+  List<PlayerInfo> _players = []; // clientes (do ponto de vista do host)
   Map<String, dynamic> _gameState = {};
   Map<String, dynamic>? _lastResult;
   String? _errorMsg;
+  String? _hostIp; // IP do host (para clientes)
+  String? _myIp;
+
+  // Descoberta de salas (para clientes)
+  final List<MpRoom> _availableRooms = [];
+  Timer? _roomCleanupTimer;
 
   // ── Getters ───────────────────────────────────────────────
   MpRole get role => _role;
   MpGamePhase get phase => _phase;
-  String get localIp => _localIp;
   String get myName => _myName;
-  String get myId => _conn.myId ?? 'host';
+  String get myIp => _myIp ?? '???';
+  String get hostIp => _hostIp ?? '';
   bool get isHost => _role == MpRole.host;
   bool get isConnected => _role != MpRole.none;
   String get currentGame => _currentGame;
@@ -45,127 +76,248 @@ class MpProvider extends ChangeNotifier {
   Map<String, dynamic> get gameState => Map.unmodifiable(_gameState);
   Map<String, dynamic>? get lastResult => _lastResult;
   String? get errorMsg => _errorMsg;
-  MpServer get server => _server;
-  MpClientConn get conn => _conn;
-  int get playerCount => isHost ? (_players.length + 1) : _players.length;
+  List<MpRoom> get availableRooms => List.unmodifiable(_availableRooms);
 
-  // ── Host ──────────────────────────────────────────────────
+  // Contagem total: host + clientes
+  int get playerCount => isHost ? (_players.length + 1) : (_players.length + 1);
+
+  // ── HOST: criar sala ──────────────────────────────────────
   Future<bool> startHost(String name) async {
     _myName = name;
     _errorMsg = null;
-    try {
-      await _server.start();
-      _localIp = await _getLocalIp();
-      _role = MpRole.host;
-      _phase = MpGamePhase.lobby;
-      _players = [];
 
-      _server.onClientsChanged = () {
-        _players = _server.clients
-            .map((c) => PlayerInfo(id: c.id, name: c.name))
-            .toList();
-        notifyListeners();
-      };
-
-      _server.onMessage = _handleHostMessage;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMsg = 'Erro ao iniciar servidor: $e';
+    final ok = await _udp.start();
+    if (!ok) {
+      _errorMsg = 'Não foi possível abrir socket UDP.\nVerifique as permissões de rede.';
       notifyListeners();
       return false;
     }
+
+    _myIp = _udp.myIp;
+    _role = MpRole.host;
+    _phase = MpGamePhase.lobby;
+    _players = [];
+
+    _udp.onMessage = _handleHostMessage;
+
+    // Broadcast periódico anunciando a sala
+    _startRoomAnnounce();
+    notifyListeners();
+    return true;
   }
 
-  void _handleHostMessage(String playerId, Map<String, dynamic> msg) {
-    final type = msg['type'] as String?;
+  void _startRoomAnnounce() {
+    _udp.startPeriodicBroadcast({
+      'type': 'room_announce',
+      'hostName': _myName,
+      'hostIp': _myIp,
+      'playerCount': _players.length + 1,
+    });
+  }
+
+  void _handleHostMessage(String fromIp, Map<String, dynamic> msg) {
+    final type = msg['type'] as String? ?? '';
+
     switch (type) {
+      case 'join_request':
+        final playerName = msg['name'] as String? ?? 'Camarada';
+        // Adicionar jogador se não existir
+        if (!_players.any((p) => p.id == fromIp)) {
+          _players.add(PlayerInfo(id: fromIp, name: playerName));
+        }
+        // Enviar confirmação com lista de jogadores
+        _udp.sendTo(fromIp, {
+          'type': 'join_ack',
+          'hostName': _myName,
+          'players': _players.map((p) => p.toJson()).toList(),
+        });
+        // Notificar todos os outros sobre novo jogador
+        _broadcastToClients({
+          'type': 'player_list',
+          'players': _players.map((p) => p.toJson()).toList(),
+        });
+        // Atualizar broadcast com nova contagem
+        _startRoomAnnounce();
+        notifyListeners();
+        break;
+
       case 'tap_score':
         final score = (msg['score'] as num?)?.toInt() ?? 0;
-        _updatePlayerScore(playerId, score);
-        // Rebroadcast to all
-        _server.broadcastAll({
+        _updatePlayerScore(fromIp, score);
+        // Relay para todos
+        _broadcastToClients({
           'type': 'score_update',
-          'playerId': playerId,
+          'playerId': fromIp,
           'score': score,
         });
         notifyListeners();
         break;
+
       case 'memory_match':
-        // Rebroadcast memory matches
-        _server.broadcastAll({...msg, 'playerId': playerId});
+        _broadcastToClients({...msg, 'playerId': fromIp});
         notifyListeners();
         break;
+
       case 'trade_request':
       case 'trade_accept':
       case 'trade_decline':
-        // Rotear para o destinatário
+        // Roteamento: se destino é o host, processar localmente
         final to = msg['to'] as String?;
-        if (to != null) {
-          _server.sendTo(to, {...msg, 'from': playerId});
+        if (to == 'host' || to == _myIp) {
+          _gameState = {..._gameState, 'trade_msg': {...msg, 'from': fromIp}};
+        } else if (to != null) {
+          // Relay para o cliente destino
+          _udp.sendTo(to, {...msg, 'from': fromIp, 'fromName': _getPlayerName(fromIp)});
         }
+        notifyListeners();
+        break;
+
+      case 'leave':
+        _players.removeWhere((p) => p.id == fromIp);
+        _broadcastToClients({
+          'type': 'player_list',
+          'players': _players.map((p) => p.toJson()).toList(),
+        });
+        _startRoomAnnounce();
+        notifyListeners();
         break;
     }
   }
 
-  // ── Client ────────────────────────────────────────────────
-  Future<bool> joinGame(String ip, String name) async {
+  // ── CLIENT: procurar e entrar em sala ─────────────────────
+  Future<bool> startScanning(String name) async {
     _myName = name;
     _errorMsg = null;
-    _conn.onMessage = _handleClientMessage;
-    _conn.onDisconnected = () {
-      _role = MpRole.none;
-      _phase = MpGamePhase.lobby;
-      _errorMsg = 'Desconectado do host';
-      notifyListeners();
-    };
+    _availableRooms.clear();
 
-    final ok = await _conn.connect(ip, name);
-    if (ok) {
-      _role = MpRole.client;
-      _phase = MpGamePhase.lobby;
+    final ok = await _udp.start();
+    if (!ok) {
+      _errorMsg = 'Não foi possível abrir socket UDP.';
       notifyListeners();
-    } else {
-      _errorMsg = 'Não foi possível conectar em $ip';
+      return false;
     }
-    return ok;
+
+    _myIp = _udp.myIp;
+    _role = MpRole.none; // scanning, ainda não entrou
+    _udp.onMessage = _handleScanMessage;
+
+    // Limpar salas antigas a cada 5s
+    _roomCleanupTimer?.cancel();
+    _roomCleanupTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      // Salas são re-anunciadas a cada 2s; se sumiram, remover
+      // (simplificado: manter apenas as mais recentes)
+      notifyListeners();
+    });
+
+    notifyListeners();
+    return true;
   }
 
-  void _handleClientMessage(Map<String, dynamic> msg) {
-    final type = msg['type'] as String?;
+  void _handleScanMessage(String fromIp, Map<String, dynamic> msg) {
+    final type = msg['type'] as String? ?? '';
+    if (type == 'room_announce') {
+      final room = MpRoom(
+        hostIp: fromIp,
+        hostName: msg['hostName'] as String? ?? 'Host',
+        playerCount: (msg['playerCount'] as num?)?.toInt() ?? 1,
+      );
+      // Atualizar ou adicionar sala
+      final idx = _availableRooms.indexWhere((r) => r.hostIp == fromIp);
+      if (idx >= 0) {
+        _availableRooms[idx] = room;
+      } else {
+        _availableRooms.add(room);
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<bool> joinRoom(MpRoom room) async {
+    _hostIp = room.hostIp;
+    _errorMsg = null;
+    _udp.onMessage = _handleClientMessage;
+
+    // Enviar pedido de entrada
+    _udp.sendTo(room.hostIp, {
+      'type': 'join_request',
+      'name': _myName,
+    });
+
+    // Aguardar join_ack por até 5s
+    final completer = Completer<bool>();
+
+    _udp.onMessage = (fromIp, msg) {
+      if (fromIp == room.hostIp && msg['type'] == 'join_ack') {
+        if (!completer.isCompleted) completer.complete(true);
+        _handleClientMessage(fromIp, msg);
+      } else {
+        _handleClientMessage(fromIp, msg);
+      }
+    };
+
+    Future.delayed(const Duration(seconds: 5), () {
+      if (!completer.isCompleted) completer.complete(false);
+    });
+
+    final joined = await completer.future;
+    if (joined) {
+      _role = MpRole.client;
+      _phase = MpGamePhase.lobby;
+      _roomCleanupTimer?.cancel();
+      _udp.stopPeriodicBroadcast();
+      notifyListeners();
+    } else {
+      _errorMsg = 'Não foi possível conectar a ${room.hostName}';
+      notifyListeners();
+    }
+    return joined;
+  }
+
+  void _handleClientMessage(String fromIp, Map<String, dynamic> msg) {
+    if (fromIp != _hostIp) return; // ignorar mensagens que não são do host
+    final type = msg['type'] as String? ?? '';
+
     switch (type) {
+      case 'join_ack':
+        final list = (msg['players'] as List?) ?? [];
+        _players = list.map((p) => PlayerInfo.fromJson(p as Map<String, dynamic>)).toList();
+        break;
+
       case 'player_list':
         final list = (msg['players'] as List?) ?? [];
-        _players = list
-            .map((p) => PlayerInfo(
-                  id: p['id'] as String,
-                  name: p['name'] as String,
-                ))
-            .toList();
+        _players = list.map((p) => PlayerInfo.fromJson(p as Map<String, dynamic>)).toList();
         break;
+
       case 'game_start':
         _currentGame = msg['game'] as String? ?? '';
         _gameState = (msg['state'] as Map?)?.cast<String, dynamic>() ?? {};
         _phase = MpGamePhase.playing;
         _lastResult = null;
-        // Reset scores
         for (final p in _players) p.score = 0;
         break;
+
+      case 'score_update':
+        final pid = msg['playerId'] as String?;
+        final score = (msg['score'] as num?)?.toInt() ?? 0;
+        if (pid != null) _updatePlayerScore(pid, score);
+        break;
+
       case 'game_state':
         _gameState = (msg['state'] as Map?)?.cast<String, dynamic>() ?? {};
         break;
+
       case 'game_end':
         _lastResult = (msg['result'] as Map?)?.cast<String, dynamic>();
         _phase = MpGamePhase.result;
         break;
-      case 'score_update':
-        final pid = msg['playerId'] as String?;
-        final score = (msg['score'] as num?)?.toInt() ?? 0;
-        _updatePlayerScore(pid ?? '', score);
+
+      case 'back_to_lobby':
+        _phase = MpGamePhase.lobby;
+        _currentGame = '';
+        _gameState = {};
+        _lastResult = null;
         break;
-      case 'memory_match':
-        _gameState = {..._gameState, 'last_match': msg};
-        break;
+
       case 'trade_request':
       case 'trade_accept':
       case 'trade_decline':
@@ -175,40 +327,41 @@ class MpProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Game Control (HOST only) ───────────────────────────────
+  // ── Ações do HOST ─────────────────────────────────────────
   void hostStartGame(String game) {
     if (!isHost) return;
     _currentGame = game;
     _phase = MpGamePhase.playing;
     _lastResult = null;
-    // Reset scores
     for (final p in _players) p.score = 0;
+    _gameState['host_score'] = 0;
+    _gameState['host_memory_score'] = 0;
 
-    Map<String, dynamic> initialState = {};
+    Map<String, dynamic> state = {};
     if (game == 'tap') {
-      initialState = {
+      state = {
         'duration': 15,
         'started_at': DateTime.now().millisecondsSinceEpoch,
       };
     } else if (game == 'memory') {
-      initialState = {
+      state = {
         'cards': _generateMemoryCards(),
         'started_at': DateTime.now().millisecondsSinceEpoch,
       };
     }
-    _gameState = initialState;
-    _server.startGame(game, initialState);
+    _gameState = {..._gameState, ...state};
+
+    _broadcastToClients({'type': 'game_start', 'game': game, 'state': state});
     notifyListeners();
   }
 
   void hostEndGame() {
     if (!isHost) return;
-    // Calcular ranking
     final allPlayers = [
-      {'id': 'host', 'name': myName, 'score': _gameState['host_score'] ?? 0},
+      {'id': _myIp ?? 'host', 'name': _myName, 'score': _gameState['host_score'] ?? _gameState['host_memory_score'] ?? 0},
       ..._players.map((p) => {'id': p.id, 'name': p.name, 'score': p.score}),
     ];
-    allPlayers.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+    (allPlayers as List).sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
 
     final result = {
       'ranking': allPlayers,
@@ -216,7 +369,7 @@ class MpProvider extends ChangeNotifier {
     };
     _lastResult = result;
     _phase = MpGamePhase.result;
-    _server.endGame(result);
+    _broadcastToClients({'type': 'game_end', 'result': result});
     notifyListeners();
   }
 
@@ -226,25 +379,23 @@ class MpProvider extends ChangeNotifier {
     _currentGame = '';
     _gameState = {};
     _lastResult = null;
-    _server.broadcastAll({'type': 'back_to_lobby'});
+    _broadcastToClients({'type': 'back_to_lobby'});
     notifyListeners();
   }
 
-  // ── Tap game actions ──────────────────────────────────────
-  // HOST registra seu próprio tap
+  // ── Tap game ──────────────────────────────────────────────
   void hostRegisterTap(int score) {
     _gameState = {..._gameState, 'host_score': score};
-    _server.broadcastAll({'type': 'score_update', 'playerId': 'host', 'score': score});
+    _broadcastToClients({'type': 'score_update', 'playerId': _myIp ?? 'host', 'score': score});
     notifyListeners();
   }
 
-  // CLIENT envia tap
   void clientSendTap(int score) {
-    _conn.send({'type': 'tap_score', 'score': score});
-    notifyListeners();
+    if (_hostIp == null) return;
+    _udp.sendTo(_hostIp!, {'type': 'tap_score', 'score': score});
   }
 
-  // ── Memory game actions ───────────────────────────────────
+  // ── Memory game ───────────────────────────────────────────
   void sendMemoryMatch(int cardA, int cardB, bool matched, int score) {
     final payload = {
       'type': 'memory_match',
@@ -255,9 +406,9 @@ class MpProvider extends ChangeNotifier {
     };
     if (isHost) {
       _gameState = {..._gameState, 'host_memory_score': score};
-      _server.broadcastAll({...payload, 'playerId': 'host'});
-    } else {
-      _conn.send(payload);
+      _broadcastToClients({...payload, 'playerId': _myIp ?? 'host'});
+    } else if (_hostIp != null) {
+      _udp.sendTo(_hostIp!, payload);
     }
     notifyListeners();
   }
@@ -272,14 +423,18 @@ class MpProvider extends ChangeNotifier {
       'isRare': isRare,
     };
     if (isHost) {
-      _server.sendTo(toId, {...msg, 'from': 'host', 'fromName': myName});
-    } else {
-      _conn.send(msg);
+      // Host envia direto para o cliente
+      if (toId != 'host') {
+        _udp.sendTo(toId, {...msg, 'from': _myIp ?? 'host', 'fromName': _myName});
+      }
+    } else if (_hostIp != null) {
+      // Cliente envia para o host fazer relay
+      _udp.sendTo(_hostIp!, msg);
     }
-    notifyListeners();
   }
 
-  void sendTradeResponse(String toId, String cardId, bool accept, {String? myCardId, String? myCardName, bool myCardRare = false}) {
+  void sendTradeResponse(String toId, String cardId, bool accept,
+      {String? myCardId, String? myCardName, bool myCardRare = false}) {
     final msg = {
       'type': accept ? 'trade_accept' : 'trade_decline',
       'to': toId,
@@ -289,20 +444,24 @@ class MpProvider extends ChangeNotifier {
       if (accept) 'myCardRare': myCardRare,
     };
     if (isHost) {
-      _server.sendTo(toId, {...msg, 'from': 'host', 'fromName': myName});
-    } else {
-      _conn.send(msg);
+      if (toId != 'host' && toId != _myIp) {
+        _udp.sendTo(toId, {...msg, 'from': _myIp ?? 'host', 'fromName': _myName});
+      }
+    } else if (_hostIp != null) {
+      _udp.sendTo(_hostIp!, msg);
     }
+    // Limpar trade pendente
+    _gameState = {..._gameState}..remove('trade_msg');
     notifyListeners();
   }
 
-  // ── Disconnect ────────────────────────────────────────────
+  // ── Desconectar ───────────────────────────────────────────
   Future<void> disconnect() async {
-    if (_role == MpRole.host) {
-      await _server.stop();
-    } else {
-      await _conn.disconnect();
+    if (_role == MpRole.client && _hostIp != null) {
+      _udp.sendTo(_hostIp!, {'type': 'leave'});
     }
+    _udp.stop();
+    _roomCleanupTimer?.cancel();
     _role = MpRole.none;
     _phase = MpGamePhase.lobby;
     _players = [];
@@ -310,10 +469,17 @@ class MpProvider extends ChangeNotifier {
     _gameState = {};
     _lastResult = null;
     _errorMsg = null;
+    _hostIp = null;
+    _availableRooms.clear();
     notifyListeners();
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // ── Helpers internos ──────────────────────────────────────
+  void _broadcastToClients(Map<String, dynamic> msg) {
+    final ips = _players.map((p) => p.id).toList();
+    _udp.sendToAll(ips, msg);
+  }
+
   void _updatePlayerScore(String id, int score) {
     for (final p in _players) {
       if (p.id == id) {
@@ -323,28 +489,22 @@ class MpProvider extends ChangeNotifier {
     }
   }
 
-  Future<String> _getLocalIp() async {
-    try {
-      final info = NetworkInfo();
-      final ip = await info.getWifiIP();
-      if (ip != null && ip.isNotEmpty) return ip;
-    } catch (_) {}
-    // Fallback
-    try {
-      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
-      for (final iface in interfaces) {
-        for (final addr in iface.addresses) {
-          if (!addr.isLoopback) return addr.address;
-        }
-      }
-    } catch (_) {}
-    return '???';
+  String _getPlayerName(String ip) {
+    return _players.firstWhere((p) => p.id == ip,
+            orElse: () => PlayerInfo(id: ip, name: ip))
+        .name;
   }
 
   List<int> _generateMemoryCards() {
-    // 8 pares = 16 cartas
     final pairs = List.generate(8, (i) => i)..addAll(List.generate(8, (i) => i));
     pairs.shuffle();
     return pairs;
+  }
+
+  @override
+  void dispose() {
+    _udp.stop();
+    _roomCleanupTimer?.cancel();
+    super.dispose();
   }
 }
